@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Spoon and Fork</title>
+<link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#FDFBF7">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1343,7 +1344,7 @@ async function gradeVisible(){
   else{closeModal();toast(done?`Graded ${done} recipe${done>1?'s':''} ✓`:'Cancelled')}
 }
 
-/* =====================  PWA (manifest + service worker generated at runtime)  ===================== */
+/* =====================  PWA (hosted manifest.json + sw.js)  ===================== */
 function drawIcon(size){
   const c=document.createElement('canvas');c.width=c.height=size;
   const x=c.getContext('2d'),u=size/100;
@@ -1363,24 +1364,14 @@ function drawIcon(size){
   x.beginPath();x.ellipse(sx,cy-15*u,7*u,12*u,0,0,Math.PI*2);x.stroke();
   return c.toDataURL('image/png');
 }
-const SW_CODE="self.addEventListener('install',function(){self.skipWaiting()});self.addEventListener('activate',function(e){e.waitUntil(self.clients.claim())});self.addEventListener('fetch',function(e){});";
 function setupPWA(){
-  const base=location.href.split('#')[0].split('?')[0];
-  try{
-    const i180=drawIcon(180),i192=drawIcon(192),i512=drawIcon(512);
+  try{   // iOS ignores manifest icons, so keep a generated touch icon + favicon
     const add=(rel,href,extra)=>{const l=document.createElement('link');l.rel=rel;l.href=href;Object.assign(l,extra||{});document.head.appendChild(l)};
-    add('apple-touch-icon',i180,{sizes:'180x180'});
-    add('icon',i192,{type:'image/png'});
-    const mf={name:'Spoon and Fork',short_name:'Spoon & Fork',description:'AI-powered personal cookbook and nutrition analyzer',
-      start_url:base,scope:base.replace(/[^/]*$/,''),display:'standalone',orientation:'portrait',background_color:'#FDFBF7',theme_color:'#FDFBF7',
-      icons:[{src:i192,sizes:'192x192',type:'image/png',purpose:'any'},{src:i512,sizes:'512x512',type:'image/png',purpose:'any'},{src:i512,sizes:'512x512',type:'image/png',purpose:'maskable'}]};
-    add('manifest',URL.createObjectURL(new Blob([JSON.stringify(mf)],{type:'application/manifest+json'})));
+    add('apple-touch-icon',drawIcon(180),{sizes:'180x180'});
+    add('icon',drawIcon(192),{type:'image/png'});
   }catch(e){}
-  if(!('serviceWorker' in navigator))return;
-  (async()=>{
-    try{await navigator.serviceWorker.register(URL.createObjectURL(new Blob([SW_CODE],{type:'text/javascript'})),{scope:base.replace(/[^/]*$/,'')});return}catch(e){}
-    try{await navigator.serviceWorker.register('./sw.js')}catch(e){}   // used when sw.js sits next to index.html on a host
-  })();
+  if('serviceWorker' in navigator)
+    window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js').catch(()=>{})});
 }
 
 /* ---------- init ---------- */
