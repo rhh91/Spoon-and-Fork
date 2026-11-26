@@ -1,0 +1,27 @@
+name: Make Icons
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          python3 -c "
+          import zlib, struct
+          def make_png(size, filename):
+              row = b'\x00' + b'\xf5\xeb\xe6' * size
+              raw = row * size
+              def chunk(tag, data):
+                  return struct.pack('!I', len(data)) + tag + data + struct.pack('!I', zlib.crc32(tag + data))
+              png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('!IIBBBBB', size, size, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
+              open(filename, 'wb').write(png)
+          make_png(192, 'icon-192.png')
+          make_png(512, 'icon-512.png')
+          "
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add icon-192.png icon-512.png
+          git commit -m "Add icons"
+          git push
