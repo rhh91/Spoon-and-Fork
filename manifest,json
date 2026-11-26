@@ -1,0 +1,17 @@
+{
+  "name": "Spoon and Fork",
+  "short_name": "Spoon & Fork",
+  "start_url": "/Spoon-and-Fork/",
+  "scope": "/Spoon-and-Fork/",
+  "display": "standalone",
+  "background_color": "#faf7f5",
+  "theme_color": "#faf7f5",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/1046/1046857.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
