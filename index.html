@@ -129,7 +129,26 @@ ul.ing li{padding:9px 0;border-bottom:1px solid #E6E1D6;font-size:15px;display:f
 ul.ing li:last-child{border:0}
 ul.ing li::before{content:"✿";color:#D8A6B0;font-size:13px;margin-top:2px}
 ul.ing li.flag{color:#8E3340;font-weight:600}
-ul.ing li.flag::before{content:"🚨"}
+ul.ing li.flag::before{display:none}
+ul.ing li.flag{background:rgba(249,218,221,.6);margin:0 -8px;padding:9px 8px;border-radius:8px}
+.dis{border:1px solid #D98A95;background:rgba(255,255,255,.75);color:#7E2A36;border-radius:999px;padding:1px 9px;font-size:11.5px;margin-left:6px;vertical-align:middle}
+.pen{flex:0 0 auto;border:1px solid var(--line);background:rgba(255,255,255,.75);color:var(--muted);border-radius:50%;width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:13px}
+.trow{display:flex;align-items:flex-start;gap:8px;margin:6px 0 8px}
+.pbar b.det{animation:none;background:linear-gradient(90deg,#F6D5D8,#E1D8EF,#D3E2EE);transition:width .25s}
+.info{border:1px solid #E6D69A;background:linear-gradient(135deg,#FBF1CF,#F8EBC4);border-radius:16px;padding:10px 14px;font-size:13.5px}
+.info p{margin:4px 0 6px}
+.tap{cursor:pointer}
+.rg{font-weight:400;text-transform:none;letter-spacing:0;font-size:12px;color:#8E6A9E}
+.msg{max-width:90%;padding:8px 12px;border-radius:14px;margin:6px 0;font-size:14.5px;border:1px solid var(--line);overflow-wrap:anywhere;line-height:1.45}
+.msg.u{margin-left:auto;background:var(--lav);border-color:#C9BDE0}
+.msg.a{background:rgba(255,255,255,.88)}
+.msg.e{background:#FBE0E3;border-color:#E3A3AB;color:#7E2A36}
+#chatLog{max-height:340px;overflow-y:auto}
+.erow{display:flex;gap:6px;align-items:flex-start;margin-bottom:6px}
+.erow .t{flex:1;min-width:0}
+.erow textarea.t{min-height:0;resize:none}
+.erow .pen{margin-top:6px}
+.dbar{gap:6px}
 ol.ins{margin:0;padding:0;list-style:none;counter-reset:s}
 ol.ins li{counter-increment:s;display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #E6E1D6}
 ol.ins li:last-child{border:0}
@@ -287,6 +306,7 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
   <button class="btn primary" id="extract">Extract &amp; Grade Recipe</button>
   <div class="prog" id="prog" hidden><div class="blobs"><i></i><i></i><i></i></div><div class="ptxt" id="ptxt">Getting started…</div><div class="pbar"><b></b></div><button class="btn sm ghost" id="cancel">Cancel</button></div>
   <div class="errc" id="err" hidden><b id="errT"></b><p id="errM"></p></div>
+  <div class="info" id="resume" hidden><b>Picking up where you left off</b><p id="resumeTxt"></p><button class="btn sm ghost" id="resumeX">Dismiss</button></div>
   <button class="btn link" id="demo">or load a demo recipe</button>
 </section>
 
@@ -441,25 +461,27 @@ const ALLERGENS={
 };
 const AL_RE={};Object.keys(ALLERGENS).forEach(k=>AL_RE[k]=new RegExp('\\b('+ALLERGENS[k].kw.join('|')+')(s|es)?\\b','i'));
 const reEsc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+function ingMatches(a,t){
+  const d=ALLERGENS[a];
+  if(d){let x=t;d.not.forEach(n=>{x=x.split(n).join(' ')});return AL_RE[a].test(x)}
+  return !!a&&new RegExp('\\b'+reEsc(String(a).toLowerCase())+'(s|es)?\\b','i').test(t);
+}
 function detectAllergens(r){
-  const byName={},idx=new Set();
-  r.ingredients.forEach((ing,i)=>{
-    const t=ing.toLowerCase();
-    state.s.allergens.forEach(a=>{
-      const d=ALLERGENS[a];if(!d)return;
-      let s=t;d.not.forEach(x=>{s=s.split(x).join(' ')});
-      if(AL_RE[a].test(s)){(byName[a]=byName[a]||[]).push(ing);idx.add(i)}
-    });
-    state.s.custom.forEach(c=>{
-      if(c&&new RegExp('\\b'+reEsc(c.toLowerCase())+'(s|es)?\\b','i').test(t)){(byName[c]=byName[c]||[]).push(ing);idx.add(i)}
-    });
+  const byName={},add=(n,ing)=>{(byName[n]=byName[n]||[]);if(!byName[n].includes(ing))byName[n].push(ing)};
+  const active=[...state.s.allergens,...state.s.custom];
+  r.ingredients.forEach(ing=>{const t=ing.toLowerCase();active.forEach(a=>{if(ingMatches(a,t))add(a,ing)})});
+  if(r.ai&&r.ai.allergens)r.ai.allergens.forEach(x=>{
+    const xl=String(x).toLowerCase().trim();if(xl.length<2)return;
+    const hit=active.find(a=>{const al=a.toLowerCase();return al===xl||xl.includes(al)||al.includes(xl)});
+    if(!hit)return;
+    const found=r.ingredients.filter(i=>ingMatches(hit,i.toLowerCase()));
+    if(found.length)found.forEach(i=>add(hit,i));
+    else if(!byName[hit])byName[hit]=['Flagged by AI analysis of the full recipe'];
   });
-  if(r.ai&&r.ai.allergens&&r.ai.allergens.length){
-    const act=[...state.s.allergens,...state.s.custom];
-    r.ai.allergens.forEach(x=>{const xl=String(x).toLowerCase().trim();if(xl.length<2)return;
-      const hit=act.find(a=>{const al=a.toLowerCase();return al===xl||xl.includes(al)||al.includes(xl)});
-      if(hit&&!byName[hit])byName[hit]=['Flagged by AI analysis of the full recipe']});
-  }
+  const dis=(r.dismissed||[]).map(x=>String(x).toLowerCase());
+  Object.keys(byName).forEach(n=>{if(dis.includes(n.toLowerCase()))delete byName[n]});
+  const idx=new Set();
+  r.ingredients.forEach((ing,i)=>{if(Object.keys(byName).some(n=>byName[n].includes(ing)))idx.add(i)});
   return {names:Object.keys(byName),byName,idx};
 }
 
@@ -487,8 +509,9 @@ const FOCI={
 };
 const GR=[[97,'A+'],[93,'A'],[90,'A-'],[87,'B+'],[83,'B'],[80,'B-'],[77,'C+'],[73,'C'],[70,'C-'],[67,'D+'],[63,'D'],[60,'D-'],[50,'F+'],[35,'F']];
 const RANK={A:4,B:3,C:2,D:1,F:0};
-const GC={A:{bg:'#DDEBD7',fg:'#46663F',ring:'#8FB486'},B:{bg:'#D7E6F0',fg:'#3F6481',ring:'#86AECB'},C:{bg:'#F6EBC3',fg:'#7D6A25',ring:'#D6BE6A'},D:{bg:'#F7DCC8',fg:'#94572B',ring:'#E0A67A'},F:{bg:'#F5D2D6',fg:'#9A3F4B',ring:'#D98A95'}};
+const GC={A:{bg:'#DDEBD7',fg:'#46663F',ring:'#8FB486'},B:{bg:'#D7E6F0',fg:'#3F6481',ring:'#86AECB'},C:{bg:'#F6EBC3',fg:'#7D6A25',ring:'#D6BE6A'},D:{bg:'#F7DCC8',fg:'#94572B',ring:'#E0A67A'},F:{bg:'#F5D2D6',fg:'#9A3F4B',ring:'#D98A95'},U:{bg:'#EFEBE3',fg:'#8A8378',ring:'#D8D2C7'}};
 function analyze(r){
+  if(r.ungraded)return {score:0,grade:'—',fs:[],ex:'Not graded yet.',fam:'U',src:'none'};
   const focus=FOCI[state.s.focus]||FOCI.balanced;
   const fs=focus.f(r.macros,CAL[r.meal]||[400,700]).map(([name,score,display,w])=>({name,score:Math.round(score),display,w}));
   let score=Math.max(1,Math.round(clamp(fs.reduce((a,f)=>a+f.score*f.w,0))));
@@ -526,6 +549,7 @@ function norm(r){
     ingredients:(Array.isArray(r.ingredients)?r.ingredients:[]).map(String),instructions:(Array.isArray(r.instructions)?r.instructions:[]).map(String),
     notes:r.notes?String(r.notes):'',created:r.created||Date.now(),
     ai:r.ai&&+r.ai.score?{score:Math.min(100,Math.max(1,Math.round(+r.ai.score))),grade:/^[A-DF][+-]?$/.test(r.ai.grade)?r.ai.grade:'',reason:String(r.ai.reason||'').slice(0,400),focus:String(r.ai.focus||''),allergens:(Array.isArray(r.ai.allergens)?r.ai.allergens:[]).map(String).slice(0,30)}:null,
+    dismissed:(Array.isArray(r.dismissed)?r.dismissed:[]).map(String).slice(0,20),ungraded:!!r.ungraded,svEst:!!r.svEst,
     mid:r.mid?String(r.mid).slice(0,20):'',thumb:/^https:\/\/(www\.themealdb\.com|cdn\.dummyjson\.com)\//.test(r.thumb||'')?String(r.thumb).slice(0,300):''};
 }
 
@@ -555,6 +579,7 @@ function addFiles(list){
   [...list].forEach(f=>{
     const t=f.type.startsWith('image/')?'image':f.type.startsWith('video/')?'video':null;
     if(!t){skipped++;return}
+    if(t==='video'&&f.size>300*1048576)toast('That clip is '+Math.round(f.size/1048576)+'MB — use Wi-Fi and keep the app open, or trim it to a few minutes.');
     state.files.push({id:uid(),name:f.name,type:t,url:URL.createObjectURL(f),file:f});
   });
   if(skipped)toast(skipped+' file(s) skipped — only images & videos');
@@ -565,7 +590,7 @@ function renderThumbs(){
   if(!fl.length){el.innerHTML='';return}
   const im=fl.filter(f=>f.type==='image').length,vi=fl.length-im;
   el.innerHTML=`<div class="grid-t">${fl.map(f=>`<div class="th">${f.type==='image'?`<img src="${f.url}" alt="">`:`<video src="${f.url}#t=0.1" muted playsinline preload="metadata"></video><span class="badge">▶ clip</span>`}<button class="x" data-rm="${f.id}" aria-label="Remove">×</button></div>`).join('')}</div>
-  <div class="filebar"><span>${[im&&im+' image'+(im>1?'s':''),vi&&vi+' video'+(vi>1?'s':'')].filter(Boolean).join(' · ')}</span><button class="btn sm ghost" id="clearAll">Clear All</button></div>`;
+  <div class="filebar"><span>${[im&&im+' image'+(im>1?'s':''),vi&&vi+' video'+(vi>1?'s':'')].filter(Boolean).join(' · ')}${vi?' · keep app open while it uploads':''}</span><button class="btn sm ghost" id="clearAll">Clear All</button></div>`;
 }
 $('#thumbs').addEventListener('click',e=>{
   const rm=e.target.closest('[data-rm]');
@@ -591,7 +616,7 @@ function renderBook(){
   const list=state.recipes.filter(r=>{
     if(!passesFilters(r))return false;
     if(f.meal!=='All'&&r.meal!==f.meal)return false;
-    if(f.grade!=='All'&&RANK[analyze(r).fam]<RANK[f.grade])return false;
+    if(f.grade!=='All'&&(r.ungraded||RANK[analyze(r).fam]<RANK[f.grade]))return false;
     if(q&&!(r.title+' '+r.meal+' '+r.ingredients.join(' ')).toLowerCase().includes(q))return false;
     return true;
   }).sort((a,b)=>b.created-a.created);
@@ -620,10 +645,10 @@ function openDetail(id){
   const st=new Set((store.get('sf_struck',{})[id])||[]);
   const focus=FOCI[state.s.focus]||FOCI.balanced;
   const banner=al.names.length
-   ?`<div class="alert"><h3>🚨🚨 ALLERGEN ALERT 🚨🚨</h3><div style="font-size:14px;margin-top:4px">This recipe contains ingredients that match your profile:</div><ul>${al.names.map(n=>`<li><b>${esc(n)}</b> — ${al.byName[n].map(esc).join('; ')}</li>`).join('')}</ul></div>`
-   :`<span class="safe">✓ Allergen Safe</span>`;
+   ?`<div class="alert"><h3>🚨🚨 ALLERGEN ALERT 🚨🚨</h3><div style="font-size:14px;margin-top:4px">This recipe contains ingredients that match your profile:</div><ul>${al.names.map(n=>`<li><b>${esc(n)}</b> — ${al.byName[n].map(esc).join('; ')} <button class="dis" data-dis="${esc(n)}">Dismiss</button></li>`).join('')}</ul></div>`
+   :`<span class="safe">${r.ungraded?'✓ No allergen keywords found · not AI-checked':'✓ Allergen Safe'}</span>`;
   $('#detail').innerHTML=`<div class="wash"></div><div class="dwrap">
-    <div class="dbar"><button class="btn sm" id="back">← Back</button><button class="tchip" id="tchip" hidden></button>${saved?'<button class="btn sm del" id="del">Delete</button>':'<span></span>'}</div>
+    <div class="dbar"><button class="btn sm" id="back">← Back</button>${saved?'<button class="btn sm sage" id="editRecipe">✏️ Edit Recipe</button>':''}<button class="tchip" id="tchip" hidden></button>${saved?'<button class="btn sm del" id="del">Delete</button>':'<span></span>'}</div>
     <button class="cookbtn" id="cookTog">👩‍🍳 Start Cook Mode<small>Keeps your screen awake · timer · converter</small></button>
     <div id="cooktools" hidden>
       <div class="card"><p class="lbl">Kitchen timer</p><div class="tdisp" id="tdisp">00:00</div>
@@ -633,22 +658,23 @@ function openDetail(id){
       <details class="acc"><summary style="font-size:19px">Unit converter</summary><div class="body" id="convBody"></div></details>
     </div>
     ${banner}
-    <span class="tag" style="--bd:${M.bd};background:${M.bg}">${M.e} ${r.meal}</span>
-    <h1 class="dtitle" style="margin-top:8px">${esc(r.title)}</h1>
+    <div id="mealRow" class="row wrap" style="gap:8px"><span class="tag" style="--bd:${M.bd};background:${M.bg}">${M.e} ${r.meal}</span><button class="pen" data-edit="meal" aria-label="Edit meal category">${PEN}</button></div>
+    <div class="trow" id="titleRow"><h1 class="dtitle" style="margin:0">${esc(r.title)}</h1><button class="pen" data-edit="title" aria-label="Edit recipe name" style="margin-top:6px">${PEN}</button></div>
     ${r.thumb?`<img class="hero" src="${esc(r.thumb)}" alt="">`:''}
     <div class="hint" style="margin:0 0 14px">${r.servings} serving${r.servings>1?'s':''}${r.time?' · '+esc(r.time):''}</div>
     <div class="row wrap" style="margin:0 0 14px">${saved?'<span class="tag" style="--bd:#B8D2B0;background:#DDEBD7">✓ In your cookbook</span>':'<button class="btn primary" id="saveToBook" style="flex:1 1 100%;font-size:19px;padding:11px 16px">💾 Save to My Cookbook</button>'}<button class="btn sage sm" id="share">📤 Share Recipe</button></div>
-    <div class="card"><p class="lbl">Macro rating</p>
+    ${r.ungraded?ungradedCard(r):`<div class="card${saved?' tap':''}"${saved?' data-regrade':''}><p class="lbl">Macro rating${saved?' <span class="rg">· tap score to regrade ↻</span>':''}</p>
       <div class="rate">${ring(a.score,g.ring)}<div><span class="gbig" style="color:${g.fg}">${a.grade}</span><p>${esc(a.ex)}</p></div></div>
       <details style="margin-top:12px"><summary style="cursor:pointer;font-size:13.5px;color:var(--muted)">How it was scored</summary>
         <div style="margin-top:6px">${a.fs.map(f=>`<div class="fb"><div class="top"><span>${f.name} <span style="color:var(--muted)">· ${f.display}</span></span><span>${f.score}</span></div><div class="bar"><i style="width:${f.score}%;background:${GC[(GR.find(x=>f.score>=x[0])||[0,'F'])[1][0]].ring}"></i></div></div>`).join('')}
         <p class="hint">${a.src==='ai'?'Score & grade come from the AI analysis; bars are estimated from macros. ':''}Focus: ${focus.label}. Change it in Settings.</p></div></details></div>
     <div class="card"><p class="lbl">Macros per serving</p>
       <div class="mg"><div><b>${Math.round(m.cal)}</b><span>Calories</span></div><div><b>${fmt(m.protein)}g</b><span>Protein</span></div><div><b>${fmt(m.carbs)}g</b><span>Carbs</span></div><div><b>${fmt(m.fat)}g</b><span>Fat</span></div><div><b>${fmt(m.fiber)}g</b><span>Fiber</span></div><div><b>${fmt(m.sugar)}g</b><span>Sugar</span></div></div>
-      <div class="cost"><div><b>${money(r.totalCost)}</b><span>Est. total</span></div><div><b>${money(r.totalCost/r.servings)}</b><span>Per serving</span></div></div></div>
-    <details class="acc" open><summary>Ingredients</summary><div class="body"><ul class="ing">${r.ingredients.map((x,i)=>`<li class="${al.idx.has(i)?'flag':''}">${esc(x)}</li>`).join('')}</ul></div></details>
+      <div class="cost"><div><b>${money(r.totalCost)}</b><span>Est. total</span></div><div><b>${money(r.totalCost/r.servings)}</b><span>Per serving</span></div></div></div>`}
+    <details class="acc" open><summary>Ingredients</summary><div class="body"><ul class="ing">${r.ingredients.map((x,i)=>`${ingLi(x,al.idx.has(i))}`).join('')}</ul></div></details>
     <details class="acc" open><summary>Instructions</summary><div class="body"><div style="text-align:right;margin-bottom:4px"><button class="btn sm ghost" id="resetSteps"${st.size?'':' hidden'}>Reset steps</button></div><p class="hint" style="margin:0 0 6px">Tap a step to cross it off.</p><ol class="ins">${r.instructions.map((x,i)=>`<li data-step="${i}" class="${st.has(i)?'done':''}"><span>${esc(x)}</span></li>`).join('')}</ol></div></details>
     ${r.notes?`<details class="acc"><summary>Source notes</summary><div class="body" style="white-space:pre-wrap;font-size:14px;overflow-wrap:anywhere">${esc(r.notes)}</div></details>`:''}
+    ${chatHTML(r)}
   </div>`;
   $('#detail').dataset.id=id;$('#detail').hidden=false;$('#detail').scrollTop=0;document.body.style.overflow='hidden';delArm=0;cook.id=id;cook.on=false;tRender();convRender();
 }
@@ -737,7 +763,7 @@ function buildPrompt(meal){
 Extract ONE complete recipe from everything provided (screenshots, video frames and audio, pasted links, captions, notes). Merge all inputs into a single recipe. If a link is given and you can search/browse, use it. Estimate anything missing with realistic portions and current US grocery prices.
 
 USER ALLERGEN LIST: ${al.length?al.join(', '):'(none)'}
-In "detectedAllergens", list every item from that list that is present in the recipe, INCLUDING hidden sources (butter/whey/casein/ghee/cream -> Dairy; soy sauce/miso/tofu -> Soy; soy sauce/flour/pasta/bread -> Gluten/Wheat; mayo -> Eggs; tahini -> Sesame; etc.). Use the user's exact names. Use [] if none.
+In "detectedAllergens", flag an item from that list ONLY if it is explicitly present: named in the ingredients list, shown or said in the video, or the standard base of a listed ingredient (e.g. Dairy for heavy cream, cheese, butter or yogurt; Soy for soy sauce, tofu or miso; Gluten/Wheat for flour, pasta, bread or soy sauce; Eggs for eggs or mayo; Sesame for tahini). Do NOT guess or assume unmentioned hidden allergens — for example never add Eggs just because a dish is a casserole, baked good or breaded, and never add an allergen for an ingredient that isn't listed. Use the user's exact names. Use [] if none.
 
 MACRO GRADING FOCUS: "${f.label}" (${f.desc})${f.crit?'\nExact criteria: '+f.crit:''}
 "macroScore" is an integer 1-100 graded STRICTLY against this focus using the per-serving macros and meal type. Be an honest, tough grader (90+ is rare). "macroGrade" must be one of A+,A,A-,B+,B,B-,C+,C,C-,D+,D,D-,F+,F,F- and match the score (97+ A+, 93 A, 90 A-, 87 B+, 83 B, 80 B-, 77 C+, 73 C, 70 C-, 67 D+, 63 D, 60 D-, 50 F+, 35 F, lower F-). "macroGradeReason" is 1-2 sentences.
@@ -772,22 +798,47 @@ async function httpErr(res,who){
 }
 const b64=f=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=()=>no(new Error('Could not read '+f.name));r.readAsDataURL(f)});
 
-async function geminiUpload(f,mime){
-  const gk=state.s.gKey;setStatus('Uploading '+(f.name||'file')+' to Gemini…');
-  let r=await fetch(GEM_UP,{method:'POST',signal:ctrl.signal,headers:{'x-goog-api-key':gk,'X-Goog-Upload-Protocol':'resumable','X-Goog-Upload-Command':'start','X-Goog-Upload-Header-Content-Length':String(f.size),'X-Goog-Upload-Header-Content-Type':mime,'Content-Type':'application/json'},body:JSON.stringify({file:{display_name:f.name||'upload'}})});
-  if(!r.ok)await httpErr(r,'Gemini upload');
-  const url=r.headers.get('x-goog-upload-url');if(!url)throw new Error('Gemini upload: no upload URL came back.');
-  r=await fetch(url,{method:'POST',signal:ctrl.signal,headers:{'X-Goog-Upload-Offset':'0','X-Goog-Upload-Command':'upload, finalize'},body:f});
-  if(!r.ok)await httpErr(r,'Gemini upload');
-  let file=(await r.json()).file;
-  if(file&&file.state==='PROCESSING')setStatus('Gemini is processing your video…');
-  for(let i=0;i<90&&file.state==='PROCESSING';i++){
+function xhrUpload(url,blob,headers,onp,sig){
+  return new Promise((ok,no)=>{
+    const x=new XMLHttpRequest();x.open('POST',url);
+    Object.keys(headers).forEach(k=>x.setRequestHeader(k,headers[k]));
+    x.upload.onprogress=e=>{if(e.lengthComputable)onp(Math.round(e.loaded/e.total*100))};
+    x.onload=()=>x.status>=200&&x.status<300?ok(x.responseText):no(new Error('Gemini upload error '+x.status+': '+String(x.responseText).slice(0,160)));
+    x.onerror=()=>no(new TypeError('Network request failed'));
+    x.onabort=()=>{const e=new Error('aborted');e.name='AbortError';no(e)};
+    if(sig)sig.addEventListener('abort',()=>x.abort());
+    x.send(blob);
+  });
+}
+const upKey=f=>f.name+'|'+f.size+'|'+(f.lastModified||0);
+const upList=()=>store.get('sf_uploads',[]).filter(x=>Date.now()-x.t<40*3600e3);   // Gemini keeps files 48h
+const upGet=f=>upList().find(x=>x.k===upKey(f))||null;
+const upPut=(f,file)=>store.set('sf_uploads',upList().filter(x=>x.k!==upKey(f)).concat({k:upKey(f),name:file.name,t:Date.now()}).slice(-10));
+const upDel=f=>store.set('sf_uploads',upList().filter(x=>x.k!==upKey(f)));
+function setPct(p){const b=$('#prog .pbar b');if(!b)return;if(p==null){b.classList.remove('det');b.style.width=''}else{b.classList.add('det');b.style.width=p+'%'}}
+async function geminiUpload(f,mime,label){
+  const gk=state.s.gKey,sig=ctrl.signal,tag=label||(f.name||'file');
+  let file=null;const hit=upGet(f);
+  if(hit){   // resume: this exact file was already uploaded earlier
+    setStatus('Reusing your earlier upload…');
+    try{const p=await fetch(GEM_BASE+hit.name,{headers:{'x-goog-api-key':gk},signal:sig});if(p.ok)file=await p.json();else upDel(f)}catch(e){if(e.name==='AbortError')throw e}
+  }
+  if(!file){
+    setStatus('Starting upload of '+tag+'…');
+    const r=await fetch(GEM_UP,{method:'POST',signal:sig,headers:{'x-goog-api-key':gk,'X-Goog-Upload-Protocol':'resumable','X-Goog-Upload-Command':'start','X-Goog-Upload-Header-Content-Length':String(f.size),'X-Goog-Upload-Header-Content-Type':mime,'Content-Type':'application/json'},body:JSON.stringify({file:{display_name:f.name||'upload'}})});
+    if(!r.ok)await httpErr(r,'Gemini upload');
+    const url=r.headers.get('x-goog-upload-url');if(!url)throw new Error('Gemini upload: no upload URL came back.');
+    const txt=await xhrUpload(url,f,{'X-Goog-Upload-Offset':'0','X-Goog-Upload-Command':'upload, finalize'},p=>{setStatus(`Uploading ${tag} — ${p}%`);setPct(p)},sig);
+    setPct(null);file=JSON.parse(txt).file;upPut(f,file);
+  }
+  const t0=Date.now();
+  for(let i=0;i<150&&file.state==='PROCESSING';i++){
+    setStatus(`Gemini is processing ${tag}… ${Math.round((Date.now()-t0)/1000)}s`);
     await sleep(2000);
-    const p=await fetch(GEM_BASE+file.name,{headers:{'x-goog-api-key':gk},signal:ctrl.signal});
-    if(!p.ok)await httpErr(p,'Gemini');file=await p.json();
+    const p=await fetch(GEM_BASE+file.name,{headers:{'x-goog-api-key':gk},signal:sig});if(!p.ok)await httpErr(p,'Gemini');file=await p.json();
   }
   if(file.state==='FAILED')throw new Error('Gemini could not process that file.');
-  if(file.state==='PROCESSING')throw new Error('Gemini is still processing the video — try again in a minute.');
+  if(file.state==='PROCESSING')throw new Error('Gemini is still processing the video — tap Extract again in a minute (the upload is saved, so it won’t re-send).');
   return file.uri;
 }
 async function callGemini(notes,media,hasUrl,meal){
@@ -796,7 +847,7 @@ async function callGemini(notes,media,hasUrl,meal){
     const m=media[i],f=m.file,mime=f.type||(m.type==='video'?'video/mp4':'image/jpeg');
     setStatus(`Preparing ${m.type} ${i+1} of ${media.length}…`);
     // inline base64 is capped at ~20MB per request (base64 adds ~33%), so big files / big totals go via the Files API
-    if(f.size>20*1024*1024||inline+f.size>14*1024*1024)parts.push({fileData:{mimeType:mime,fileUri:await geminiUpload(f,mime)}});
+    if(f.size>20*1024*1024||inline+f.size>14*1024*1024)parts.push({fileData:{mimeType:mime,fileUri:await geminiUpload(f,mime,`${m.type} ${i+1} of ${media.length}`)}});
     else{inline+=f.size;parts.push({inlineData:{mimeType:mime,data:await b64(f)}})}
   }
   parts.push({text:buildPrompt(meal||state.meal)+(notes?'\n\nUSER NOTES / LINKS:\n'+notes:'\n\n(No text notes — use the attached media only.)')});
@@ -851,7 +902,7 @@ async function runExtract(){
   if(!media.length&&!notes)return toast('Add a screenshot, clip, or a link first');
   if(!gk&&!ok)return fail('No API key yet','Open Settings → API connections and add a Gemini key (or an OpenRouter key for text-only recipes).');
   if(media.length&&!gk)return fail('Gemini key needed','Photos and videos need a Google Gemini key. Add one in Settings, or remove the media and use text/links with OpenRouter.');
-  ctrl=new AbortController();setBusy(true);setStatus('Getting started…');
+  ctrl=new AbortController();setBusy(true);setStatus('Getting started…');startJob(notes,media);
   try{
     let json,used;
     const useDS=!media.length&&ok&&(state.s.preferDS||!gk);
@@ -867,12 +918,13 @@ async function runExtract(){
     state.recipes.unshift(rec);saveR();
     state.files.forEach(f=>URL.revokeObjectURL(f.url));state.files=[];renderThumbs();$('#notes').value='';
     state.f={meal:'All',grade:'All',q:''};$('#q').value='';
+    if(document.visibilityState==='hidden'){JOB.readyWhileAway=true;notifyReady(rec.title)}
     go('book');openDetail(rec.id);toast('Extracted with '+used+' ✓');
   }catch(e){
     if(e.name==='AbortError')toast('Cancelled');
     else if(e instanceof TypeError)fail('Couldn’t reach the AI service','The network request failed. Check your connection. (The Claude preview blocks outside requests — run the downloaded file.)');
     else fail('Extraction failed',e.message||String(e));
-  }finally{ctrl=null;setBusy(false)}
+  }finally{ctrl=null;setBusy(false);endJob()}
 }
 $('#preferDS').classList.toggle('on',!!state.s.preferDS);
 $('#preferDS').addEventListener('click',e=>{state.s.preferDS=!state.s.preferDS;e.currentTarget.classList.toggle('on',state.s.preferDS);saveS()});
@@ -960,6 +1012,17 @@ $('#detail').addEventListener('change',e=>{
 function detailClicks(e){
   const c=s=>e.target.closest(s);
   if(c('#cookTog'))return setCook(!cook.on);
+  if(c('#editRecipe'))return editChoice();
+  if(c('#gradeBtn'))return gradeCurrent('grade');
+  const rg=c('[data-regrade]');if(rg&&!c('details'))return regradeConfirm();
+  const qb=c('[data-q]');if(qb)return askChef(qb.dataset.q);
+  if(c('#chatSend'))return askChef($('#chatIn').value);
+  if(c('[data-chatclear]')){CHAT[cook.id]=[];saveChat();return renderChat(cook.id,false)}
+  const ds=c('[data-dis]');if(ds)return dismissAllergen(ds.dataset.dis);
+  const ed=c('[data-edit]');if(ed)return startEdit(ed.dataset.edit);
+  const sm=c('[data-setmeal]');if(sm)return updateRecipe(cook.id,{meal:sm.dataset.setmeal});
+  if(c('#titleSave'))return saveTitle();
+  if(c('#editCancel'))return refreshDetail();
   if(c('#share'))return openShare(cook.id);
   if(c('#saveToBook'))return saveCurrent();
   const li=c('[data-step]');if(li){li.classList.toggle('done');return saveStruck()}
@@ -980,7 +1043,7 @@ const B64={
 };
 async function pipeBytes(u8,Cls){const cs=new Cls('deflate-raw'),w=cs.writable.getWriter();w.write(u8).catch(()=>{});w.close().catch(()=>{});return new Uint8Array(await new Response(cs.readable).arrayBuffer())}
 async function encodeShare(r){
-  const raw=new TextEncoder().encode(JSON.stringify({t:r.title,m:r.meal,s:r.servings,tm:r.time,mc:r.macros,c:r.totalCost,i:r.ingredients,n:r.instructions,a:r.ai,th:r.thumb}));
+  const raw=new TextEncoder().encode(JSON.stringify({t:r.title,m:r.meal,s:r.servings,tm:r.time,mc:r.macros,c:r.totalCost,i:r.ingredients,n:r.instructions,a:r.ai,th:r.thumb,ug:r.ungraded?1:0}));
   if(window.CompressionStream){try{return 'z'+B64.enc(await pipeBytes(raw,CompressionStream))}catch(e){}}
   return 'j'+B64.enc(raw);
 }
@@ -991,7 +1054,7 @@ async function decodeShare(code){
   if(kind==='z'){if(!window.DecompressionStream)throw new Error('no decompress');raw=await pipeBytes(raw,DecompressionStream)}
   else if(kind!=='j')throw new Error('bad code');
   const o=JSON.parse(new TextDecoder().decode(raw));
-  return norm({id:uid(),title:o.t,meal:o.m,servings:o.s,time:o.tm,macros:o.mc,totalCost:o.c,ingredients:o.i,instructions:o.n,ai:o.a,thumb:o.th});
+  return norm({id:uid(),title:o.t,meal:o.m,servings:o.s,time:o.tm,macros:o.mc,totalCost:o.c,ingredients:o.i,instructions:o.n,ai:o.a,thumb:o.th,ungraded:!!o.ug});
 }
 async function copyText(t,msg){
   try{await navigator.clipboard.writeText(t);toast(msg||'Copied ✓')}
@@ -1017,9 +1080,9 @@ async function openShare(id){
 function previewShared(rec){
   PEND=rec;const a=analyze(rec),al=detectAllergens(rec),g=GC[a.fam],M=MEAL[rec.meal],m=rec.macros;
   showModal(`<p class="lbl" style="margin:0">📬 Shared with you</p><h3 class="mh">${esc(rec.title)}</h3>
-   <div class="row wrap" style="margin:6px 0 12px"><span class="tag" style="--bd:${M.bd};background:${M.bg}">${M.e} ${rec.meal}</span><span class="gb2" style="background:${g.bg};color:${g.fg}">${a.grade} · ${a.score}/100</span><span class="hint" style="margin:0">${money(rec.totalCost/rec.servings)}/serving · ${Math.round(m.cal)} kcal</span></div>
+   <div class="row wrap" style="margin:6px 0 12px"><span class="tag" style="--bd:${M.bd};background:${M.bg}">${M.e} ${rec.meal}</span><span class="gb2" style="background:${g.bg};color:${g.fg}">${rec.ungraded?'Not graded yet':a.grade+' · '+a.score+'/100'}</span>${rec.ungraded?'':`<span class="hint" style="margin:0">${money(rec.totalCost/rec.servings)}/serving · ${Math.round(m.cal)} kcal</span>`}</div>
    ${al.names.length?`<div class="alert"><h3>🚨 ALLERGEN ALERT</h3><div style="font-size:14px;margin-top:4px">This matches <b>your</b> allergen settings:</div><ul>${al.names.map(n=>`<li><b>${esc(n)}</b> — ${al.byName[n].map(esc).join('; ')}</li>`).join('')}</ul></div>`:`<span class="safe">✓ Allergen Safe for your profile</span>`}
-   <details class="acc"><summary style="font-size:18px">Ingredients (${rec.ingredients.length})</summary><div class="body"><ul class="ing">${rec.ingredients.map((x,i)=>`<li class="${al.idx.has(i)?'flag':''}">${esc(x)}</li>`).join('')}</ul></div></details>
+   <details class="acc"><summary style="font-size:18px">Ingredients (${rec.ingredients.length})</summary><div class="body"><ul class="ing">${rec.ingredients.map((x,i)=>`${ingLi(x,al.idx.has(i))}`).join('')}</ul></div></details>
    <button class="btn primary" id="saveShared">Save to My Cookbook</button>
    <button class="btn link" data-close>Not now</button>`);
 }
@@ -1080,7 +1143,7 @@ $('#fSafe').addEventListener('click',()=>{state.s.safeMode=!state.s.safeMode;sav
 $('#fCost').addEventListener('click',()=>{state.s.costOn=!state.s.costOn;saveS();renderFilters()});
 $('#fAmt').addEventListener('input',e=>{state.s.costMax=Math.max(0,parseFloat(e.target.value)||0);saveS()});
 $$('[data-cmode]').forEach(b=>b.addEventListener('click',()=>{state.s.costMode=b.dataset.cmode;saveS();renderFilters()}));
-document.addEventListener('click',e=>{if(e.target.closest('[data-gosettings]'))go('set')});
+document.addEventListener('click',e=>{if(e.target.closest('[data-gosettings]')){closeDetail();go('set')}});
 function refreshViews(){
   if($('#v-book').classList.contains('active'))renderBook();
   if($('#v-disc').classList.contains('active'))renderDiscover();
@@ -1091,10 +1154,10 @@ function cardHTML(r){
   const a=analyze(r),al=detectAllergens(r),g=GC[a.fam],m=MEAL[r.meal];
   return `<button class="rc${r.thumb?' hasimg':''}" data-id="${esc(r.id)}" style="--bg:${m.bg};--bd:${m.bd}">
     ${r.thumb?`<img class="cthumb" src="${esc(thumbSrc(r.thumb))}" data-full="${esc(r.thumb)}" onerror="this.onerror=null;this.src=this.dataset.full" loading="lazy" alt="">`:''}
-    <div class="cbody"><div class="gb" style="background:${g.bg};color:${g.fg}"><b>${a.grade}</b><span>${a.score}/100</span></div>
+    <div class="cbody">${r.ungraded?'<div class="gb ug"><b>—</b><span>not graded</span></div>':`<div class="gb" style="background:${g.bg};color:${g.fg}"><b>${a.grade}</b><span>${a.score}/100</span></div>`}
     <h3>${esc(r.title)}</h3>
     <span class="tag">${m.e} ${r.meal}</span>
-    <div class="meta"><span>💰 ${money(r.totalCost)} total · ${money(r.totalCost/r.servings)}/serving</span><span>${Math.round(r.macros.cal)} kcal</span>${al.names.length?`<span class="warn">🚨 Allergen Warning</span>`:''}</div></div>
+    <div class="meta">${r.ungraded?'<span>Not graded yet</span>':`<span>💰 ${money(r.totalCost)} total · ${money(r.totalCost/r.servings)}/serving</span><span>${Math.round(r.macros.cal)} kcal</span>`}${al.names.length?`<span class="warn">🚨 Allergen Warning</span>`:''}</div></div>
   </button>`;
 }
 function saveCurrent(){
@@ -1127,9 +1190,9 @@ function protsFromText(name,ings){
   return p;
 }
 const DS={meal:'Dinner',prot:'',q:'',grade:'All',items:[],loading:false,msg:'',err:'',note:'',key:'',vis:[],limit:30};
-const RAW={},ITEMS={},CATC={},LISTC={},GRADED=store.get('sf_graded',{});
+const RAW={},ITEMS={},CATC={},LISTC={},DRAFTS={},GRADED=store.get('sf_graded',{});
 let DJ_ALL=null;
-const findRecipe=id=>state.recipes.find(x=>x.id===id)||GRADED[id]||null;
+const findRecipe=id=>state.recipes.find(x=>x.id===id)||GRADED[id]||DRAFTS[id]||null;
 const gradedFor=rid=>GRADED[rid]||state.recipes.find(r=>r.id===rid)||null;
 const mapMeal=c=>({Breakfast:'Breakfast',Dessert:'Dessert',Starter:'Snack',Side:'Lunch'})[c]||'Dinner';
 const aiMeal=m=>m==='Side'?'Lunch':m;
@@ -1247,7 +1310,7 @@ function ugCard(it){
     ${it.thumb?`<img class="cthumb" src="${esc(thumbSrc(it.thumb))}" data-full="${esc(it.thumb)}" onerror="this.onerror=null;this.src=this.dataset.full" loading="lazy" alt="">`:''}
     <div class="cbody"><div class="gb ug"><b>—</b><span>not graded</span></div>
     <h3>${esc(it.name)}</h3><span class="tag">${m.e} ${esc((it.meals&&it.meals[0])||it.cat||'Recipe')}${it.cat&&it.meals&&it.meals[0]&&it.cat!==it.meals[0]?' · '+esc(it.cat):''}</span>
-    <div class="meta"><span>Tap to grade ✨</span>${al&&al.names.length?'<span class="warn">🚨 Allergen Warning</span>':''}</div></div></button>`;
+    <div class="meta"><span>Tap for recipe • Tap badge to grade</span>${al&&al.names.length?'<span class="warn">🚨 Allergen Warning</span>':''}</div></div></button>`;
 }
 function renderDiscover(){
   $('#dMeal').innerHTML=MEALROW.map(m=>`<button class="chip${!DS.q&&DS.meal===m?' on':''}" data-dmeal="${m}">${m}</button>`).join('');
@@ -1255,7 +1318,7 @@ function renderDiscover(){
   $('#dGrade').innerHTML=['All','A','B','C'].map(g=>`<button class="chip${DS.grade===g?' on':''}" data-dgrade="${g}">${g==='All'?'All':g+' or better'}</button>`).join('');
   let hid=0,gradeHid=0;const vis=[];
   DS.items.forEach(it=>{
-    const rec=gradedFor(it.rid);
+    const rec0=gradedFor(it.rid),rec=rec0&&!rec0.ungraded?rec0:null;
     if(rec){
       if(!passesFilters(rec)){hid++;return}
       if(DS.grade!=='All'&&RANK[analyze(rec).fam]<RANK[DS.grade])return;
@@ -1288,7 +1351,8 @@ $('#v-disc').addEventListener('click',e=>{
   else if(dg){DS.grade=dg.dataset.dgrade;renderDiscover()}
   else if(e.target.closest('#dGradeBtn'))gradeVisible();
   else if(e.target.closest('[data-more]')){DS.limit+=30;renderDiscover()}
-  else if(c){c.dataset.id?openDetail(c.dataset.id):openMeal(c.dataset.rid)}
+  else if(e.target.closest('.gb.ug')){const b=e.target.closest('.rc');if(b&&b.dataset.rid)openMeal(b.dataset.rid)}
+  else if(c){c.dataset.id?openDetail(c.dataset.id):viewMeal(c.dataset.rid)}
 });
 
 /* grading prebuilt recipes with the same AI analyzer */
@@ -1311,6 +1375,8 @@ async function gradeMeal(rid){
     notes:'Source: '+(raw.src==='dj'?'DummyJSON':'TheMealDB')+(raw.area?' · '+raw.area+' cuisine':'')+(raw.link?'\n'+raw.link:'')+(raw.yt?'\nVideo: '+raw.yt:'')});
   if(raw.servings>0)rec.servings=Math.round(raw.servings);
   GRADED[rid]=rec;
+  const sv=state.recipes.find(x=>x.id===rid);
+  if(sv){Object.assign(sv,{macros:rec.macros,totalCost:rec.totalCost,ai:rec.ai,ungraded:false});if(sv.svEst){sv.servings=rec.servings;sv.svEst=false}saveR()}
   const ks=Object.keys(GRADED);if(ks.length>150)ks.slice(0,ks.length-150).forEach(k=>delete GRADED[k]);
   store.set('sf_graded',GRADED);return rec;
 }
@@ -1318,7 +1384,7 @@ const progSheet=t=>`<div class="prog" style="margin:0"><div class="blobs"><i></i
 const errSheet=(t,m)=>`<h3 class="mh">${esc(t)}</h3><div class="errc" style="margin-top:6px"><p style="margin:0">${esc(m)}</p></div><button class="btn sage" data-close style="margin-top:14px">Close</button>`;
 function noKeySheet(){showModal(`<h3 class="mh">Add an API key to grade</h3><p class="hint" style="margin:0 0 12px">Grading sends the recipe to Gemini (or DeepSeek via OpenRouter) for macros, cost and allergens. Add a key in Settings → API connections. Results are cached, so each recipe is only graded once.</p><button class="btn primary" data-close data-gosettings>Open Settings</button>`)}
 async function openMeal(rid){
-  const cached=gradedFor(rid);if(cached)return openDetail(cached.id);
+  const cached=gradedFor(rid);if(cached&&!cached.ungraded)return openDetail(cached.id);
   if(!aiReady())return noKeySheet();
   if(ctrl)return toast('Hold on — another AI job is running');
   ctrl=new AbortController();showModal(progSheet('Fetching recipe…'));
@@ -1343,6 +1409,270 @@ async function gradeVisible(){
   if(err)showModal(errSheet(done?`Graded ${done}, then hit a snag`:'Couldn’t grade recipes',err));
   else{closeModal();toast(done?`Graded ${done} recipe${done>1?'s':''} ✓`:'Cancelled')}
 }
+
+/* =====================  BACKGROUND JOBS, NOTIFICATIONS, EDITS  ===================== */
+const JOB={running:false,wl:null,readyWhileAway:false};
+async function jobLock(){try{if('wakeLock' in navigator){JOB.wl=await navigator.wakeLock.request('screen');JOB.wl.addEventListener('release',()=>{JOB.wl=null})}}catch(e){}}
+function jobUnlock(){try{JOB.wl&&JOB.wl.release()}catch(e){}JOB.wl=null}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState!=='visible')return;
+  if(JOB.running&&!JOB.wl)jobLock();
+  if(JOB.readyWhileAway){JOB.readyWhileAway=false;chime();toast('Recipe ready! 🍽️')}
+});
+const IDB={
+  open(){return new Promise((ok,no)=>{const r=indexedDB.open('sf',1);r.onupgradeneeded=()=>r.result.createObjectStore('job');r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})},
+  async tx(mode,fn){const d=await this.open();return new Promise((ok,no)=>{const t=d.transaction('job',mode),rq=fn(t.objectStore('job'));t.oncomplete=()=>ok(rq&&rq.result);t.onerror=()=>no(t.error)})},
+  put(k,v){return this.tx('readwrite',s=>s.put(v,k))},get(k){return this.tx('readonly',s=>s.get(k))},del(k){return this.tx('readwrite',s=>s.delete(k))}
+};
+function startJob(notes,media){
+  JOB.running=true;jobLock();actx();
+  if(media.some(m=>m.type==='video')&&'Notification' in window&&Notification.permission==='default'){try{Notification.requestPermission()}catch(e){}}
+  store.set('sf_job',{t:Date.now(),notes,meal:state.meal,n:media.length});
+  const tot=media.reduce((a,m)=>a+m.file.size,0);
+  if(media.length&&tot<600*1048576)IDB.put('files',media.map(m=>({name:m.name,type:m.file.type,blob:m.file}))).catch(()=>{});
+}
+function endJob(){JOB.running=false;jobUnlock();setPct(null);store.set('sf_job',null);IDB.del('files').catch(()=>{})}
+async function notifyReady(title){
+  try{
+    if(!('Notification' in window)||Notification.permission!=='granted')return;
+    const opts={body:title+' is saved to your cookbook.',icon:drawIcon(192),tag:'sf-ready',renotify:true,vibrate:[200,100,200]};
+    const reg=('serviceWorker' in navigator)?await navigator.serviceWorker.getRegistration():null;
+    if(reg&&reg.showNotification)await reg.showNotification('Recipe Ready! 🍽️',opts);else new Notification('Recipe Ready! 🍽️',opts);
+  }catch(e){}
+}
+async function resumeCheck(){
+  const j=store.get('sf_job',null);if(!j)return;
+  store.set('sf_job',null);let n=0;
+  try{
+    const fl=await IDB.get('files');
+    if(fl&&fl.length){fl.forEach(x=>{const f=new File([x.blob],x.name,{type:x.type});state.files.push({id:uid(),name:x.name,type:String(x.type).startsWith('video/')?'video':'image',url:URL.createObjectURL(f),file:f});n++});renderThumbs()}
+  }catch(e){}
+  IDB.del('files').catch(()=>{});
+  if(j.notes&&!$('#notes').value)$('#notes').value=j.notes;
+  if(MEALS.includes(j.meal)){state.meal=j.meal;renderMealPick()}
+  $('#resumeTxt').textContent=`Your last extraction was interrupted. ${n?'I restored your '+n+' file'+(n>1?'s':'')+' and notes':'I restored your notes'} — tap Extract & Grade Recipe to resume. Videos already uploaded to Gemini won’t be re-sent.`;
+  $('#resume').hidden=false;
+}
+$('#resumeX').addEventListener('click',()=>{$('#resume').hidden=true});
+
+/* recipe detail: dismiss allergens, edit name / meal */
+const PEN='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z"/><path d="M14.5 6.5l3 3"/></svg>';
+const ingLi=(x,f)=>`<li class="${f?'flag':''}">${f?'🚨🚨 ':''}${esc(x)}</li>`;
+function refreshDetail(){
+  const d=$('#detail'),y=d.scrollTop,was=cook.on,id=cook.id;
+  if(was){cook.on=false;unlockScreen()}
+  openDetail(id);d.scrollTop=y;if(was)setCook(true);
+}
+function updateRecipe(id,patch){
+  const sv=state.recipes.find(x=>x.id===id);if(sv){Object.assign(sv,patch);saveR()}
+  if(GRADED[id]){Object.assign(GRADED[id],patch);store.set('sf_graded',GRADED)}
+  refreshDetail();refreshViews();toast('Saved ✓');
+}
+function dismissAllergen(name){
+  const r=findRecipe(cook.id);if(!r)return;
+  updateRecipe(cook.id,{dismissed:(r.dismissed||[]).concat(name)});
+}
+function startEdit(kind){
+  const r=findRecipe(cook.id);if(!r)return;
+  if(kind==='title'){
+    $('#titleRow').innerHTML=`<input class="t" id="titleIn" maxlength="120" value="${esc(r.title)}" style="flex:1;min-width:0;font-family:var(--serif);font-size:22px"><button class="btn sm sage" id="titleSave">Save</button><button class="pen" id="editCancel" aria-label="Cancel">✕</button>`;
+    const i=$('#titleIn');i.focus();i.select();
+  }else{
+    $('#mealRow').innerHTML=MEALS.map(m=>`<button class="chip m-${m}${r.meal===m?' on':''}" data-setmeal="${m}">${m}</button>`).join('')+`<button class="pen" id="editCancel" aria-label="Cancel">✕</button>`;
+  }
+}
+function saveTitle(){const v=($('#titleIn').value||'').trim().slice(0,120);if(!v)return toast('Give it a name first');updateRecipe(cook.id,{title:v})}
+$('#detail').addEventListener('keydown',e=>{if(e.target.id==='titleIn'){if(e.key==='Enter')saveTitle();else if(e.key==='Escape')refreshDetail()}});
+
+/* =====================  VIEW vs GRADE, EDIT, REGRADE, CHEF CHAT  ===================== */
+const ungradedCard=r=>`<div class="card"><p class="lbl">Macro rating</p><p style="margin:0 0 10px;font-size:14px;color:#5d574f">Not graded yet — read the whole recipe first. Grading uses one AI call to estimate macros, cost and allergens.</p><button class="btn primary" id="gradeBtn">Grade This Recipe ✨</button></div>`;
+function draftFromRaw(rid){
+  const raw=RAW[rid],it=ITEMS[rid]||{};
+  return DRAFTS[rid]=norm({id:rid,mid:rid,title:raw.name,meal:aiMeal((it.meals&&it.meals[0])||mapMeal(raw.cat)),servings:raw.servings||4,svEst:!raw.servings,time:raw.time||'',
+    ingredients:raw.ingredients,instructions:raw.steps,thumb:raw.thumb,ungraded:true,
+    notes:'Source: '+(raw.src==='dj'?'DummyJSON':'TheMealDB')+(raw.area?' · '+raw.area+' cuisine':'')+(raw.link?'\n'+raw.link:'')+(raw.yt?'\nVideo: '+raw.yt:'')});
+}
+async function viewMeal(rid){
+  const have=gradedFor(rid);if(have)return openDetail(have.id);
+  if(DRAFTS[rid])return openDetail(rid);
+  try{
+    let raw=RAW[rid];
+    if(!raw||!raw.steps){
+      toast('Loading recipe…');
+      const m=(await mdb('lookup.php?i='+rid.slice(4)))[0];if(!m)throw new Error('Recipe not found');
+      raw=RAW[rid]=parseMeal(m);
+    }
+    draftFromRaw(rid);openDetail(rid);
+  }catch(e){toast(netMsg(e))}
+}
+/* grade / regrade any recipe object from its CURRENT text */
+async function aiGrade(r){
+  const gk=state.s.gKey,ok=state.s.oKey,dflt=aiMeal(r.meal);
+  const txt=`Recipe to analyze (use the CURRENT text below, including any edits)\nTitle: ${r.title}\nMeal type: ${r.meal}\n${r.svEst?'Servings: not given — estimate a realistic number (usually 4).':'Servings: '+r.servings+' (use exactly this number)'}\n\nINGREDIENTS:\n${r.ingredients.map(x=>'- '+x).join('\n')}\n\nINSTRUCTIONS:\n${r.instructions.join('\n')}`;
+  let json;
+  if(ok&&(state.s.preferDS||!gk))json=await callOR(txt,dflt);
+  else{try{json=await callGemini(txt,[],false,dflt)}catch(e){if(e.name==='AbortError'||!ok)throw e;setStatus('Gemini hiccuped — trying DeepSeek…');json=await callOR(txt,dflt)}}
+  return fromAI(json,dflt);
+}
+function applyGrade(id,g){
+  const base=findRecipe(id);if(!base)return;
+  const patch={macros:g.macros,totalCost:g.totalCost,ai:g.ai,ungraded:false};
+  if(base.svEst){patch.servings=g.servings;patch.svEst=false}
+  const sv=state.recipes.find(x=>x.id===id);if(sv){Object.assign(sv,patch);saveR()}
+  if(GRADED[id]||/^(mdb|dj)_/.test(id)){GRADED[id]=Object.assign({},GRADED[id]||base,patch);store.set('sf_graded',GRADED)}
+  delete DRAFTS[id];
+}
+async function gradeCurrent(kind){
+  const id=cook.id,r=findRecipe(id);if(!r)return;
+  const re=kind==='regrade';
+  if(!aiReady())return noKeySheet();
+  if(ctrl)return toast('Hold on — another AI job is running');
+  ctrl=new AbortController();showModal(progSheet(re?'Regrading…':'Grading…'));
+  try{const g=await aiGrade(r);applyGrade(id,g);closeModal();refreshDetail();refreshViews();toast(re?'Regraded ✓':'Graded ✓')}
+  catch(e){if(e.name==='AbortError')closeModal();else showModal(errSheet(re?'Couldn’t regrade that':'Couldn’t grade that',netMsg(e)))}
+  finally{ctrl=null;clearInterval(rot);PFX=''}
+}
+function regradeConfirm(){
+  const f=FOCI[state.s.focus]||FOCI.balanced;
+  showModal(`<h3 class="mh">Regrade this recipe with AI?</h3><p style="font-size:14.5px;margin:0 0 12px">This recalculates macros, cost, allergens and the score using your current goal — <b>${esc(f.label)}</b> — and your latest edits to this recipe. It uses one AI call.</p><button class="btn primary" id="regradeGo">Regrade Now</button><button class="btn link" data-close>Cancel</button>`);
+}
+
+/* edit saved recipe */
+function editChoice(){
+  const r=findRecipe(cook.id);if(!r)return;
+  showModal(`<h3 class="mh">Edit recipe</h3><p class="hint" style="margin:0 0 14px">How would you like to edit “${esc(r.title)}”?</p>
+   <button class="btn primary" id="edExisting" style="font-size:18px">✏️ Edit Existing Recipe</button>
+   <p class="hint" style="margin:4px 0 14px;text-align:center">Changes overwrite this saved recipe.</p>
+   <button class="btn sage" id="edCopy" style="width:100%;padding:12px">📄 Make a Copy &amp; Edit</button>
+   <p class="hint" style="margin:4px 0 0;text-align:center">Saves “${esc(r.title)} (Copy)” and edits that — the original stays untouched.</p>
+   <button class="btn link" data-close>Cancel</button>`);
+}
+const edRow=(v,kind)=>kind==='ing'
+  ?`<div class="erow"><input class="t" data-f="ing" value="${esc(v)}" placeholder="e.g. 2 cups flour"><button class="pen rowx" aria-label="Remove line">×</button></div>`
+  :`<div class="erow"><textarea class="t" data-f="step" rows="2" placeholder="Describe this step">${esc(v)}</textarea><button class="pen rowx" aria-label="Remove step">×</button></div>`;
+function openEditor(id){
+  const r=findRecipe(id);if(!r)return;
+  showModal(`<h3 class="mh">Edit recipe</h3>
+   <label>Title</label><input class="t" id="edTitle" maxlength="120" value="${esc(r.title)}">
+   <label>Meal category</label><div class="row wrap" style="gap:6px" id="edMeals">${MEALS.map(m=>`<button class="chip m-${m}${r.meal===m?' on':''}" data-edmeal="${m}">${m}</button>`).join('')}</div>
+   <label>Servings</label><input class="t" id="edServ" type="number" min="1" max="99" inputmode="numeric" value="${r.servings}" style="max-width:120px">
+   <label>Ingredients</label><div id="edIng">${r.ingredients.map(x=>edRow(x,'ing')).join('')}</div><button class="btn sm" data-addrow="ing">+ Add ingredient</button>
+   <label>Instructions</label><div id="edSteps">${r.instructions.map(x=>edRow(x,'step')).join('')}</div><button class="btn sm" data-addrow="step">+ Add step</button>
+   <button class="btn primary" id="edSave" style="margin-top:18px">Save changes</button><button class="btn link" data-close>Cancel</button>`);
+}
+function makeCopyAndEdit(){
+  const r=findRecipe(cook.id);if(!r)return;
+  const cp=JSON.parse(JSON.stringify(r));cp.id=uid();cp.title=(r.title+' (Copy)').slice(0,120);cp.created=Date.now();cp.mid='';
+  state.recipes.unshift(cp);saveR();setCook(false);openDetail(cp.id);refreshViews();openEditor(cp.id);
+}
+function saveEditor(){
+  const id=cook.id,r=findRecipe(id);if(!r)return;
+  const title=$('#edTitle').value.trim().slice(0,120);
+  const ing=$$('#modal [data-f=ing]').map(i=>i.value.trim()).filter(Boolean);
+  const steps=$$('#modal [data-f=step]').map(i=>i.value.trim()).filter(Boolean);
+  if(!title)return toast('Give it a name first');
+  if(!ing.length)return toast('Add at least one ingredient');
+  const on=$('#edMeals .on'),serv=Math.max(1,Math.min(99,Math.round(+$('#edServ').value)||1));
+  closeModal();
+  updateRecipe(id,{title,meal:on?on.dataset.edmeal:r.meal,servings:serv,svEst:r.svEst&&serv===r.servings,ingredients:ing,instructions:steps});
+  if(!r.ungraded)toast('Saved ✓ — tap the score card to regrade with your edits');
+}
+$('#modal').addEventListener('click',e=>{
+  const c=s=>e.target.closest(s);
+  if(c('#regradeGo'))return gradeCurrent('regrade');
+  if(c('#edExisting'))return openEditor(cook.id);
+  if(c('#edCopy'))return makeCopyAndEdit();
+  const em=c('[data-edmeal]');if(em){$$('#edMeals .chip').forEach(b=>b.classList.toggle('on',b===em));return}
+  const ar=c('[data-addrow]');
+  if(ar){const k=ar.dataset.addrow,box=$(k==='ing'?'#edIng':'#edSteps');box.insertAdjacentHTML('beforeend',edRow('',k));const f=box.lastElementChild.querySelector('input,textarea');f&&f.focus();return}
+  if(c('.rowx')){const row=c('.erow');if(row)row.remove();return}
+  if(c('#edSave'))return saveEditor();
+});
+
+/* Ask AI chef */
+const CHAT=store.get('sf_chat',{});
+const chatMsgs=id=>CHAT[id]||(CHAT[id]=[]);
+function saveChat(){const ks=Object.keys(CHAT);if(ks.length>30)ks.slice(0,ks.length-30).forEach(k=>delete CHAT[k]);store.set('sf_chat',CHAT)}
+const mdLite=t=>esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').split('\n').map(l=>/^\s*[-*•]\s+/.test(l)?'• '+l.replace(/^\s*[-*•]\s+/,''):l).join('<br>');
+const msgHTML=m=>`<div class="msg ${m.r==='u'?'u':m.r==='e'?'e':'a'}">${m.r==='u'?esc(m.t).replace(/\n/g,'<br>'):mdLite(m.t)}</div>`;
+const QUICK=[['Substitutions','What can I substitute for an ingredient if I\'m missing it?'],['Higher protein','How can I make this higher protein?'],['Air fryer','Can I make this in an air fryer?'],['Double it','Double the measurements for me.']];
+function chatHTML(r){
+  const h=chatMsgs(r.id);
+  return `<div class="card" id="chatCard"><p class="lbl">Ask AI about this recipe</p>
+   <div id="chatLog">${h.length?h.map(msgHTML).join(''):'<p class="hint" style="margin:0 0 6px">Ask anything — swaps, scaling, cooking methods, healthier tweaks…</p>'}</div>
+   <div class="scroll" style="margin:6px -14px;padding:0 14px">${QUICK.map(q=>`<button class="chip" data-q="${esc(q[1])}">${q[0]}</button>`).join('')}</div>
+   <div class="row" style="align-items:flex-end"><textarea class="t" id="chatIn" rows="2" placeholder="e.g. I don't have heavy cream — what can I swap?" style="flex:1;min-height:0;resize:none"></textarea><button class="btn sage" id="chatSend">Send</button></div>
+   <button class="btn link" data-chatclear id="chatClear" style="margin-top:4px"${h.length?'':' hidden'}>Clear chat</button></div>`;
+}
+function renderChat(id,typing){
+  const log=$('#chatLog');if(!log)return;
+  const h=chatMsgs(id);
+  log.innerHTML=h.length||typing?h.map(msgHTML).join('')+(typing?'<div class="msg a" id="chatTyping">Chef is thinking…</div>':''):'<p class="hint" style="margin:0 0 6px">Ask anything — swaps, scaling, cooking methods, healthier tweaks…</p>';
+  log.scrollTop=log.scrollHeight;
+  const b=$('#chatSend');if(b)b.disabled=!!typing;
+  const cl=$('#chatClear');if(cl)cl.hidden=!h.length;
+}
+const chefStatus=m=>{const e=$('#chatTyping');if(e)e.textContent=m};
+function recipeContext(r){
+  const f=FOCI[state.s.focus]||FOCI.balanced,al=[...state.s.allergens,...state.s.custom],m=r.macros;
+  return `You are Spoon & Fork's friendly kitchen assistant, helping with ONE recipe. Be practical and conversational, and concise (usually under 180 words): short paragraphs or "-" bullets, never JSON. If asked to scale or modify, give the full updated ingredient list with amounts. When suggesting swaps, mention any effect on taste, texture or macros. NEVER suggest ingredients that conflict with the user's allergens. If the question is unrelated to cooking, gently steer back to the recipe.
+USER ALLERGENS TO AVOID: ${al.length?al.join(', '):'none listed'}
+USER GOAL (macro grading focus): ${f.label} — ${f.desc}
+RECIPE: ${r.title} (${r.meal}), serves ${r.servings}${r.time?', '+r.time:''}
+${r.ungraded?'Macros: not graded yet.':`Per serving: ${Math.round(m.cal)} kcal, ${fmt(m.protein)}g protein, ${fmt(m.carbs)}g carbs, ${fmt(m.fat)}g fat, ${fmt(m.fiber)}g fiber, ${fmt(m.sugar)}g sugar. Estimated cost ${money(r.totalCost)} total (${money(r.totalCost/r.servings)}/serving).`}
+INGREDIENTS:
+${r.ingredients.map(x=>'- '+x).join('\n')}
+INSTRUCTIONS:
+${r.instructions.map((x,i)=>(i+1)+'. '+x).join('\n')}`;
+}
+let chatCtrl=null,chatBusy=false;
+async function chefReply(r,hist){
+  const sys=recipeContext(r),gk=state.s.gKey,ok=state.s.oKey,sig=chatCtrl.signal;
+  const viaOR=async()=>{
+    chefStatus('Asking DeepSeek…');
+    const res=await fetch(OR_URL,{method:'POST',signal:sig,headers:{'Authorization':'Bearer '+ok,'Content-Type':'application/json','X-Title':'Spoon and Fork'},body:JSON.stringify({model:state.s.oModel||'deepseek/deepseek-chat',messages:[{role:'system',content:sys}].concat(hist.map(m=>({role:m.r==='u'?'user':'assistant',content:m.t})))})});
+    if(!res.ok)await httpErr(res,'OpenRouter');
+    const j=await res.json(),t=j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content;
+    if(!t)throw new Error('The chef came back empty — try again.');
+    return t;
+  };
+  const viaGem=async()=>{
+    const body={systemInstruction:{parts:[{text:sys}]},contents:hist.map(m=>({role:m.r==='u'?'user':'model',parts:[{text:m.t}]}))};
+    for(let i=0;i<GEM_MODELS.length;i++){
+      const M=GEM_MODELS[i];chefStatus('Asking Gemini '+M.name+'…');
+      const res=await fetch(GEM_BASE+'models/'+M.id+':generateContent',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-goog-api-key':gk},body:JSON.stringify(body)});
+      if(res.ok){
+        const j=await res.json(),c=j.candidates&&j.candidates[0],t=c&&c.content&&c.content.parts?c.content.parts.map(p=>p.text||'').join(''):'';
+        if(!t)throw new Error('Gemini returned no answer'+(j.promptFeedback&&j.promptFeedback.blockReason?' (blocked: '+j.promptFeedback.blockReason+')':'')+'. Try rephrasing.');
+        return t;
+      }
+      const retry=[503,429,404].includes(res.status);
+      if(retry&&i<GEM_MODELS.length-1){chefStatus(`${M.name} ${res.status===503?'busy':res.status===429?'rate-limited':'unavailable'}, switching to ${GEM_MODELS[i+1].name}…`);await sleep(900);continue}
+      try{await httpErr(res,'Gemini '+M.name)}catch(e){if(retry)e.message='All Gemini models are busy or unavailable. '+e.message;throw e}
+    }
+  };
+  if(ok&&(state.s.preferDS||!gk))return viaOR();
+  try{return await viaGem()}catch(e){if(e.name==='AbortError'||!ok)throw e;return viaOR()}
+}
+async function askChef(text){
+  text=String(text||'').trim();if(!text||chatBusy)return;
+  if(!aiReady())return noKeySheet();
+  const id=cook.id,r=findRecipe(id);if(!r)return;
+  const h=chatMsgs(id);
+  for(let i=h.length-1;i>=0;i--)if(h[i].r==='e')h.splice(i,1);
+  h.push({r:'u',t:text});
+  const inp=$('#chatIn');if(inp)inp.value='';
+  chatBusy=true;chatCtrl=new AbortController();renderChat(id,true);
+  try{
+    const hist=h.slice(-12);while(hist.length&&hist[0].r!=='u')hist.shift();
+    h.push({r:'a',t:await chefReply(r,hist)});
+  }catch(e){if(e.name!=='AbortError')h.push({r:'e',t:netMsg(e)})}
+  chatBusy=false;chatCtrl=null;
+  if(h.length>24)h.splice(0,h.length-24);
+  saveChat();
+  if(!$('#detail').hidden&&cook.id===id)renderChat(id,false);
+}
+$('#detail').addEventListener('keydown',e=>{if(e.target.id==='chatIn'&&e.key==='Enter'&&!e.shiftKey){e.preventDefault();askChef(e.target.value)}});
 
 /* =====================  PWA (hosted manifest.json + sw.js)  ===================== */
 function drawIcon(size){
@@ -1375,7 +1705,7 @@ function setupPWA(){
 }
 
 /* ---------- init ---------- */
-renderMealPick();renderSettings();renderFilters();checkHash();setupPWA();
+renderMealPick();renderSettings();renderFilters();checkHash();setupPWA();resumeCheck();
 })();
 </script>
 </body>
