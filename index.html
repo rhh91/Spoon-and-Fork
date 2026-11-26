@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Spoon and Fork</title>
+<meta name="theme-color" content="#FDFBF7">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Spoon &amp; Fork">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -410,17 +415,13 @@ const store={
 };
 const MEALS=['Breakfast','Lunch','Dinner','Snack','Dessert'];
 const MEAL={Breakfast:{bg:'#F8EBC4',bd:'#E6D69A',e:'🥞'},Lunch:{bg:'#D5E3D0',bd:'#B8D2B0',e:'🥗'},Dinner:{bg:'#E1D8EF',bd:'#C9BDE0',e:'🍝'},Snack:{bg:'#D3E2EE',bd:'#B3CDE0',e:'🍎'},Dessert:{bg:'#F6D5D8',bd:'#EBB9C0',e:'🍪'}};
-/* PRIVATE FAMILY BUILD — default keys fill in whenever a key field is blank. Don't host or share this file publicly. */
-const DEF_KEYS={g:'AQ.Ab8RN6J63r34bIlh77rHDRXYDuBkyT2e8pI9Ui4I2vO8yIW_Wg',o:'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'};
 const state={
   recipes:store.get('sf_recipes',[]),
   s:Object.assign({allergens:[],custom:[],focus:'balanced',gKey:'',oKey:'',oModel:'deepseek/deepseek-chat',preferDS:false,safeMode:false,costOn:false,costMax:25,costMode:'total'},store.get('sf_settings',{})),
   meal:'Breakfast', f:{meal:'All',grade:'All',q:''}, files:[]
 };
 const saveR=()=>store.set('sf_recipes',state.recipes), saveS=()=>store.set('sf_settings',state.s);
-if(!state.s.gKey)state.s.gKey=DEF_KEYS.g;
-if(!state.s.oKey)state.s.oKey=DEF_KEYS.o;
-saveS();
+
 
 /* ---------- toast ---------- */
 let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2800)}
@@ -1342,8 +1343,48 @@ async function gradeVisible(){
   else{closeModal();toast(done?`Graded ${done} recipe${done>1?'s':''} ✓`:'Cancelled')}
 }
 
+/* =====================  PWA (manifest + service worker generated at runtime)  ===================== */
+function drawIcon(size){
+  const c=document.createElement('canvas');c.width=c.height=size;
+  const x=c.getContext('2d'),u=size/100;
+  x.fillStyle='#FDFBF7';x.fillRect(0,0,size,size);
+  [[0,0,'246,213,216',.95,70],[100,5,'225,216,239',.95,65],[95,60,'211,226,238',.9,65],[5,65,'213,227,208',.9,65],[50,105,'248,235,196',.95,75]].forEach(([px,py,rgb,a,r])=>{
+    const g=x.createRadialGradient(px*u,py*u,0,px*u,py*u,r*u);
+    g.addColorStop(0,'rgba('+rgb+','+a+')');g.addColorStop(1,'rgba('+rgb+',0)');x.fillStyle=g;x.fillRect(0,0,size,size);
+  });
+  x.strokeStyle='#3B3733';x.lineWidth=Math.max(1.5,size*.014);x.lineCap='round';x.lineJoin='round';
+  x.globalAlpha=.55;x.beginPath();x.arc(50*u,50*u,35*u,0,Math.PI*2);x.stroke();x.globalAlpha=1;
+  const cx=50*u,cy=50*u,fx=cx-11*u,sx=cx+11*u;
+  x.beginPath();
+  x.moveTo(fx-6*u,cy-27*u);x.lineTo(fx-6*u,cy-12*u);x.quadraticCurveTo(fx-6*u,cy-4*u,fx,cy-4*u);x.quadraticCurveTo(fx+6*u,cy-4*u,fx+6*u,cy-12*u);x.lineTo(fx+6*u,cy-27*u);
+  x.moveTo(fx,cy-27*u);x.lineTo(fx,cy+27*u);
+  x.moveTo(sx,cy+27*u);x.lineTo(sx,cy-3*u);
+  x.stroke();
+  x.beginPath();x.ellipse(sx,cy-15*u,7*u,12*u,0,0,Math.PI*2);x.stroke();
+  return c.toDataURL('image/png');
+}
+const SW_CODE="self.addEventListener('install',function(){self.skipWaiting()});self.addEventListener('activate',function(e){e.waitUntil(self.clients.claim())});self.addEventListener('fetch',function(e){});";
+function setupPWA(){
+  const base=location.href.split('#')[0].split('?')[0];
+  try{
+    const i180=drawIcon(180),i192=drawIcon(192),i512=drawIcon(512);
+    const add=(rel,href,extra)=>{const l=document.createElement('link');l.rel=rel;l.href=href;Object.assign(l,extra||{});document.head.appendChild(l)};
+    add('apple-touch-icon',i180,{sizes:'180x180'});
+    add('icon',i192,{type:'image/png'});
+    const mf={name:'Spoon and Fork',short_name:'Spoon & Fork',description:'AI-powered personal cookbook and nutrition analyzer',
+      start_url:base,scope:base.replace(/[^/]*$/,''),display:'standalone',orientation:'portrait',background_color:'#FDFBF7',theme_color:'#FDFBF7',
+      icons:[{src:i192,sizes:'192x192',type:'image/png',purpose:'any'},{src:i512,sizes:'512x512',type:'image/png',purpose:'any'},{src:i512,sizes:'512x512',type:'image/png',purpose:'maskable'}]};
+    add('manifest',URL.createObjectURL(new Blob([JSON.stringify(mf)],{type:'application/manifest+json'})));
+  }catch(e){}
+  if(!('serviceWorker' in navigator))return;
+  (async()=>{
+    try{await navigator.serviceWorker.register(URL.createObjectURL(new Blob([SW_CODE],{type:'text/javascript'})),{scope:base.replace(/[^/]*$/,'')});return}catch(e){}
+    try{await navigator.serviceWorker.register('./sw.js')}catch(e){}   // used when sw.js sits next to index.html on a host
+  })();
+}
+
 /* ---------- init ---------- */
-renderMealPick();renderSettings();renderFilters();checkHash();
+renderMealPick();renderSettings();renderFilters();checkHash();setupPWA();
 })();
 </script>
 </body>
